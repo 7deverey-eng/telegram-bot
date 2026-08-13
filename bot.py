@@ -1,9 +1,4 @@
-!pip install -q -U python-telegram-bot nest_asyncio
-
 import asyncio
-import nest_asyncio
-
-nest_asyncio.apply()
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -12,7 +7,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     MessageHandler,
     ContextTypes,
-    filters
+    filters,
 )
 
 # ==========================================
@@ -103,10 +98,6 @@ async def receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💰 600 ₸"
     )
 
-    # ======================================
-    # ФОТО ЧЕК
-    # ======================================
-
     if update.message.photo:
 
         await context.bot.send_photo(
@@ -116,10 +107,6 @@ async def receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard
         )
 
-    # ======================================
-    # ФАЙЛ / DOCUMENT ЧЕК
-    # ======================================
-
     elif update.message.document:
 
         await context.bot.send_document(
@@ -128,10 +115,6 @@ async def receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             caption=caption,
             reply_markup=keyboard
         )
-
-    # ======================================
-    # ҚОЛДАНУШЫҒА ХАБАРЛАМА
-    # ======================================
 
     await update.message.reply_text(
         "✅ Чек қабылданды!\n\n"
@@ -144,39 +127,24 @@ async def receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # АДМИН БАТЫРМАЛАРЫ
 # ==========================================
 
-async def admin_buttons(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
 
-    # Тек админ
     if query.from_user.id != ADMIN_ID:
-
         await query.answer(
             "❌ Бұл батырма тек админге арналған.",
             show_alert=True
         )
-
         return
 
     await query.answer()
 
     try:
-
         action, user_id = query.data.split("_")
-
         user_id = int(user_id)
-
     except Exception:
-
         return
-
-
-    # ======================================
-    # ТӨЛЕМ РАСТАЛДЫ
-    # ======================================
 
     if action == "yes":
 
@@ -191,44 +159,30 @@ async def admin_buttons(
 
         await context.bot.send_message(
             chat_id=user_id,
-
             text=(
                 "✅ Төлем расталды!\n\n"
                 "🎬 Киноны көру үшін төмендегі "
                 "батырманы басыңыз:"
             ),
-
             reply_markup=keyboard
         )
 
         try:
-
-            if query.message.photo or query.message.document:
-
-                await query.edit_message_caption(
-                    caption="✅ ТӨЛЕМ РАСТАЛДЫ"
-                )
-
-            else:
-
+            await query.edit_message_caption(
+                caption="✅ ТӨЛЕМ РАСТАЛДЫ"
+            )
+        except Exception:
+            try:
                 await query.edit_message_text(
                     text="✅ ТӨЛЕМ РАСТАЛДЫ"
                 )
-
-        except Exception:
-
-            pass
-
-
-    # ======================================
-    # ТӨЛЕМ ҚАБЫЛДАНБАДЫ
-    # ======================================
+            except Exception:
+                pass
 
     elif action == "no":
 
         await context.bot.send_message(
             chat_id=user_id,
-
             text=(
                 "❌ Төлем қабылданбады.\n\n"
                 "🧾 Чекті қайта жіберіңіз."
@@ -236,26 +190,20 @@ async def admin_buttons(
         )
 
         try:
-
-            if query.message.photo or query.message.document:
-
-                await query.edit_message_caption(
-                    caption="❌ ТӨЛЕМ ҚАБЫЛДАНБАДЫ"
-                )
-
-            else:
-
+            await query.edit_message_caption(
+                caption="❌ ТӨЛЕМ ҚАБЫЛДАНБАДЫ"
+            )
+        except Exception:
+            try:
                 await query.edit_message_text(
                     text="❌ ТӨЛЕМ ҚАБЫЛДАНБАДЫ"
                 )
-
-        except Exception:
-
-            pass
+            except Exception:
+                pass
 
 
 # ==========================================
-# ҚАТЕЛЕР
+# ҚАТЕ ӨҢДЕУ
 # ==========================================
 
 async def error_handler(update, context):
@@ -264,67 +212,56 @@ async def error_handler(update, context):
 
 
 # ==========================================
-# БОТТЫ ҚҰРУ
+# НЕГІЗГІ ФУНКЦИЯ
 # ==========================================
 
-app = Application.builder().token(BOT_TOKEN).build()
+async def main():
 
+    app = Application.builder().token(BOT_TOKEN).build()
 
-# /start
-app.add_handler(
-    CommandHandler(
-        "start",
-        start
+    app.add_handler(
+        CommandHandler("start", start)
     )
-)
 
-
-# Сатып алу
-app.add_handler(
-    CallbackQueryHandler(
-        buy,
-        pattern=r"^buy$"
+    app.add_handler(
+        CallbackQueryHandler(
+            buy,
+            pattern=r"^buy$"
+        )
     )
-)
 
-
-# Админ Растау / Бас тарту
-app.add_handler(
-    CallbackQueryHandler(
-        admin_buttons,
-        pattern=r"^(yes|no)_\d+$"
+    app.add_handler(
+        CallbackQueryHandler(
+            admin_buttons,
+            pattern=r"^(yes|no)_\d+$"
+        )
     )
-)
 
-
-# Фото немесе файл
-app.add_handler(
-    MessageHandler(
-        filters.PHOTO | filters.Document.ALL,
-        receipt
+    app.add_handler(
+        MessageHandler(
+            filters.PHOTO | filters.Document.ALL,
+            receipt
+        )
     )
-)
 
+    app.add_error_handler(error_handler)
 
-# Қате өңдеу
-app.add_error_handler(error_handler)
+    print("🤖 БОТ ІСКЕ ҚОСЫЛУДА...")
+
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling(
+        drop_pending_updates=True
+    )
+
+    print("✅ БОТ ІСКЕ ҚОСЫЛДЫ!")
+
+    await asyncio.Event().wait()
 
 
 # ==========================================
 # ІСКЕ ҚОСУ
 # ==========================================
 
-print("🤖 БОТ ІСКЕ ҚОСЫЛУДА...")
-
-await app.initialize()
-
-await app.start()
-
-await app.updater.start_polling(
-    drop_pending_updates=True
-)
-
-print("✅ БОТ ІСКЕ ҚОСЫЛДЫ!")
-print("📱 Telegram-нан /start басып тексеріңіз.")
-
-await asyncio.Event().wait()
+if __name__ == "__main__":
+    asyncio.run(main())
