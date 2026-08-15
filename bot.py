@@ -1,4 +1,5 @@
 import os
+import asyncio
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -13,42 +14,10 @@ from telegram.ext import (
 )
 
 # ==========================================
-# RENDER HEALTH SERVER
+# БАСТЫ БАПТАУЛАР
 # ==========================================
 
-class HealthHandler(BaseHTTPRequestHandler):
-
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running!")
-
-    def log_message(self, format, *args):
-        pass
-
-
-def run_web_server():
-    port = int(os.environ.get("PORT", 10000))
-
-    server = HTTPServer(
-        ("0.0.0.0", port),
-        HealthHandler
-    )
-
-    server.serve_forever()
-
-
-threading.Thread(
-    target=run_web_server,
-    daemon=True
-).start()
-
-
-# ==========================================
-# БАПТАУЛАР
-# ==========================================
-
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 ADMIN_ID = 7104896018
 
@@ -59,20 +28,40 @@ KASPI = "4400 4303 3000 9942"
 CHANNEL_URL = "https://t.me/films1kz"
 
 
-if not BOT_TOKEN:
-    raise RuntimeError(
-        "BOT_TOKEN Render Environment Variables ішінде жоқ!"
+# ==========================================
+# RENDER HEALTH SERVER
+# ==========================================
+
+class HealthHandler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+    def log_message(self, format, *args):
+        pass
+
+
+def start_health_server():
+    port = int(os.environ.get("PORT", 10000))
+
+    server = HTTPServer(
+        ("0.0.0.0", port),
+        HealthHandler
     )
+
+    print(f"🌐 Health server started on port {port}")
+
+    server.serve_forever()
 
 
 # ==========================================
 # /START
 # ==========================================
 
-async def start(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [
@@ -110,8 +99,8 @@ async def buy(
     await query.answer()
 
     await query.message.reply_text(
-        "💰 Бағасы: 600 ₸\n\n"
-        "💳: 4400 4303 3000 9942\n\n"
+        f"💰 Бағасы: {PRICE} ₸\n\n"
+        f"💳: {KASPI}\n\n"
         "Төлем жасағаннан кейін:\n"
         "🧾 Чекті (файл түрінде) осы ботқа жіберіңіз."
     )
@@ -145,10 +134,13 @@ async def receipt(
         "🧾 ЖАҢА ЧЕК\n\n"
         f"👤 {user.first_name}\n"
         f"🆔 {user.id}\n"
-        "💰 600 ₸"
+        f"💰 {PRICE} ₸"
     )
 
-    # Фото
+    # ======================================
+    # ФОТО
+    # ======================================
+
     if update.message.photo:
 
         await context.bot.send_photo(
@@ -158,7 +150,10 @@ async def receipt(
             reply_markup=keyboard
         )
 
-    # Файл
+    # ======================================
+    # DOCUMENT / ФАЙЛ
+    # ======================================
+
     elif update.message.document:
 
         await context.bot.send_document(
@@ -168,6 +163,10 @@ async def receipt(
             reply_markup=keyboard
         )
 
+    # ======================================
+    # ҚОЛДАНУШЫҒА
+    # ======================================
+
     await update.message.reply_text(
         "✅ Чек қабылданды!\n\n"
         "⏳ Төлем тексерілуде.\n"
@@ -176,7 +175,7 @@ async def receipt(
 
 
 # ==========================================
-# АДМИН: РАСТАУ / БАС ТАРТУ
+# АДМИН БАТЫРМАЛАРЫ
 # ==========================================
 
 async def admin_buttons(
@@ -199,12 +198,14 @@ async def admin_buttons(
     await query.answer()
 
     try:
+
         action, user_id = query.data.split("_")
+
         user_id = int(user_id)
 
     except Exception:
-        return
 
+        return
 
     # ======================================
     # РАСТАУ
@@ -245,9 +246,9 @@ async def admin_buttons(
                     text="✅ ТӨЛЕМ РАСТАЛДЫ"
                 )
 
-        except Exception:
-            pass
+        except Exception as e:
 
+            print("Edit error:", e)
 
     # ======================================
     # БАС ТАРТУ
@@ -277,8 +278,9 @@ async def admin_buttons(
                     text="❌ ТӨЛЕМ ҚАБЫЛДАНБАДЫ"
                 )
 
-        except Exception:
-            pass
+        except Exception as e:
+
+            print("Edit error:", e)
 
 
 # ==========================================
@@ -294,63 +296,85 @@ async def error_handler(
 
 
 # ==========================================
-# БОТ
+# БОТТЫ ІСКЕ ҚОСУ
 # ==========================================
 
-app = (
-    Application
-    .builder()
-    .token(BOT_TOKEN)
-    .build()
-)
+def main():
 
+    if not BOT_TOKEN:
 
-# /start
-app.add_handler(
-    CommandHandler(
-        "start",
-        start
+        print("❌ BOT_TOKEN табылмады!")
+        print("Render → Environment → BOT_TOKEN тексеріңіз.")
+
+        return
+
+    # Render health server
+    health_thread = threading.Thread(
+        target=start_health_server,
+        daemon=True
     )
-)
 
+    health_thread.start()
 
-# Сатып алу
-app.add_handler(
-    CallbackQueryHandler(
-        buy,
-        pattern=r"^buy$"
+    print("🤖 БОТ ІСКЕ ҚОСЫЛУДА...")
+
+    app = Application.builder().token(BOT_TOKEN).build()
+
+    # /start
+    app.add_handler(
+        CommandHandler(
+            "start",
+            start
+        )
     )
-)
 
-
-# Админ батырмалары
-app.add_handler(
-    CallbackQueryHandler(
-        admin_buttons,
-        pattern=r"^(yes|no)_\d+$"
+    # Сатып алу
+    app.add_handler(
+        CallbackQueryHandler(
+            buy,
+            pattern=r"^buy$"
+        )
     )
-)
 
-
-# Фото немесе файл
-app.add_handler(
-    MessageHandler(
-        filters.PHOTO | filters.Document.ALL,
-        receipt
+    # Админ Растау / Бас тарту
+    app.add_handler(
+        CallbackQueryHandler(
+            admin_buttons,
+            pattern=r"^(yes|no)_\d+$"
+        )
     )
-)
 
+    # Фото
+    app.add_handler(
+        MessageHandler(
+            filters.PHOTO,
+            receipt
+        )
+    )
 
-# Қате өңдеу
-app.add_error_handler(error_handler)
+    # Document
+    app.add_handler(
+        MessageHandler(
+            filters.Document.ALL,
+            receipt
+        )
+    )
+
+    # Қате
+    app.add_error_handler(error_handler)
+
+    print("✅ БОТ ІСКЕ ҚОСЫЛДЫ!")
+    print("📱 Telegram-нан /start басып тексеріңіз.")
+
+    # Polling
+    app.run_polling(
+        drop_pending_updates=True
+    )
 
 
 # ==========================================
-# ІСКЕ ҚОСУ
+# START
 # ==========================================
 
-print("🤖 БОТ ІСКЕ ҚОСЫЛУДА...")
-
-app.run_polling(
-    drop_pending_updates=True
-)
+if __name__ == "__main__":
+    main()
