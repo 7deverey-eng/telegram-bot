@@ -1,4 +1,6 @@
-import asyncio
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -11,10 +13,42 @@ from telegram.ext import (
 )
 
 # ==========================================
+# RENDER HEALTH SERVER
+# ==========================================
+
+class HealthHandler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+    def log_message(self, format, *args):
+        pass
+
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 10000))
+
+    server = HTTPServer(
+        ("0.0.0.0", port),
+        HealthHandler
+    )
+
+    server.serve_forever()
+
+
+threading.Thread(
+    target=run_web_server,
+    daemon=True
+).start()
+
+
+# ==========================================
 # БАПТАУЛАР
 # ==========================================
 
-BOT_TOKEN = "8803741851:AAHptSSDzg-vFG05rpfSCVDgi9bZQ2WeElo"
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 ADMIN_ID = 7104896018
 
@@ -25,11 +59,20 @@ KASPI = "4400 4303 3000 9942"
 CHANNEL_URL = "https://t.me/films1kz"
 
 
+if not BOT_TOKEN:
+    raise RuntimeError(
+        "BOT_TOKEN Render Environment Variables ішінде жоқ!"
+    )
+
+
 # ==========================================
 # /START
 # ==========================================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     keyboard = [
         [
@@ -57,9 +100,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # САТЫП АЛУ
 # ==========================================
 
-async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def buy(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     query = update.callback_query
+
     await query.answer()
 
     await query.message.reply_text(
@@ -74,7 +121,10 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ЧЕК ҚАБЫЛДАУ
 # ==========================================
 
-async def receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def receipt(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     user = update.effective_user
 
@@ -98,6 +148,7 @@ async def receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💰 600 ₸"
     )
 
+    # Фото
     if update.message.photo:
 
         await context.bot.send_photo(
@@ -107,6 +158,7 @@ async def receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard
         )
 
+    # Файл
     elif update.message.document:
 
         await context.bot.send_document(
@@ -124,18 +176,24 @@ async def receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==========================================
-# АДМИН БАТЫРМАЛАРЫ
+# АДМИН: РАСТАУ / БАС ТАРТУ
 # ==========================================
 
-async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_buttons(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     query = update.callback_query
 
+    # Тек админ
     if query.from_user.id != ADMIN_ID:
+
         await query.answer(
             "❌ Бұл батырма тек админге арналған.",
             show_alert=True
         )
+
         return
 
     await query.answer()
@@ -143,8 +201,14 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         action, user_id = query.data.split("_")
         user_id = int(user_id)
+
     except Exception:
         return
+
+
+    # ======================================
+    # РАСТАУ
+    # ======================================
 
     if action == "yes":
 
@@ -168,16 +232,26 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         try:
-            await query.edit_message_caption(
-                caption="✅ ТӨЛЕМ РАСТАЛДЫ"
-            )
-        except Exception:
-            try:
+
+            if query.message.photo or query.message.document:
+
+                await query.edit_message_caption(
+                    caption="✅ ТӨЛЕМ РАСТАЛДЫ"
+                )
+
+            else:
+
                 await query.edit_message_text(
                     text="✅ ТӨЛЕМ РАСТАЛДЫ"
                 )
-            except Exception:
-                pass
+
+        except Exception:
+            pass
+
+
+    # ======================================
+    # БАС ТАРТУ
+    # ======================================
 
     elif action == "no":
 
@@ -190,78 +264,93 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         try:
-            await query.edit_message_caption(
-                caption="❌ ТӨЛЕМ ҚАБЫЛДАНБАДЫ"
-            )
-        except Exception:
-            try:
+
+            if query.message.photo or query.message.document:
+
+                await query.edit_message_caption(
+                    caption="❌ ТӨЛЕМ ҚАБЫЛДАНБАДЫ"
+                )
+
+            else:
+
                 await query.edit_message_text(
                     text="❌ ТӨЛЕМ ҚАБЫЛДАНБАДЫ"
                 )
-            except Exception:
-                pass
+
+        except Exception:
+            pass
 
 
 # ==========================================
-# ҚАТЕ ӨҢДЕУ
+# ҚАТЕЛЕР
 # ==========================================
 
-async def error_handler(update, context):
+async def error_handler(
+    update: object,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     print("❌ Қате:", context.error)
 
 
 # ==========================================
-# НЕГІЗГІ ФУНКЦИЯ
+# БОТ
 # ==========================================
 
-async def main():
+app = (
+    Application
+    .builder()
+    .token(BOT_TOKEN)
+    .build()
+)
 
-    app = Application.builder().token(BOT_TOKEN).build()
 
-    app.add_handler(
-        CommandHandler("start", start)
+# /start
+app.add_handler(
+    CommandHandler(
+        "start",
+        start
     )
+)
 
-    app.add_handler(
-        CallbackQueryHandler(
-            buy,
-            pattern=r"^buy$"
-        )
+
+# Сатып алу
+app.add_handler(
+    CallbackQueryHandler(
+        buy,
+        pattern=r"^buy$"
     )
+)
 
-    app.add_handler(
-        CallbackQueryHandler(
-            admin_buttons,
-            pattern=r"^(yes|no)_\d+$"
-        )
+
+# Админ батырмалары
+app.add_handler(
+    CallbackQueryHandler(
+        admin_buttons,
+        pattern=r"^(yes|no)_\d+$"
     )
+)
 
-    app.add_handler(
-        MessageHandler(
-            filters.PHOTO | filters.Document.ALL,
-            receipt
-        )
+
+# Фото немесе файл
+app.add_handler(
+    MessageHandler(
+        filters.PHOTO | filters.Document.ALL,
+        receipt
     )
+)
 
-    app.add_error_handler(error_handler)
 
-    print("🤖 БОТ ІСКЕ ҚОСЫЛУДА...")
-
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling(
-        drop_pending_updates=True
-    )
-
-    print("✅ БОТ ІСКЕ ҚОСЫЛДЫ!")
-
-    await asyncio.Event().wait()
+# Қате өңдеу
+app.add_error_handler(error_handler)
 
 
 # ==========================================
 # ІСКЕ ҚОСУ
 # ==========================================
 
-if __name__ == "__main__":
-    asyncio.run(main())
+print("🤖 БОТ ІСКЕ ҚОСЫЛУДА...")
+
+app.run_polling(
+    drop_pending_updates=True
+)
